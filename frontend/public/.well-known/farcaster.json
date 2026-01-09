@@ -13,6 +13,8 @@
         "buttonTitle": "Check Score",
         "splashImageUrl": "https://ranked-neon.vercel.app/splash.png",
         "splashBackgroundColor": "#0052FF",
-        "webhookUrl": "https://ranked-neon.vercel.app/api/webhook"
+        "webhookUrl": "https://ranked-neon.vercel.app/api/webhook",
+        "primaryCategory": "social",
+        "tags": ["base", "onchain", "leaderboard", "web3", "wallet"]
     }
 }

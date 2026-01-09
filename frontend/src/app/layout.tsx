@@ -17,6 +17,9 @@ export const metadata: Metadata = {
   title: "Based or Degen? | Base Mini App",
   description: "Discover your onchain identity - are you a Builder or a Degen?",
   manifest: "/manifest.json",
+  other: {
+    "base:app_id": "69615be7b8395f034ac22010",
+  },
 };
 
 export default function RootLayout({

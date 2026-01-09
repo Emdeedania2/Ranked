@@ -1,22 +1,18 @@
 {
     "accountAssociation": {
-        "header": "eyJmaWQiO41MjQ4fQ",
-        "payload": "eyJkb21haW4iOiJexample.com\"}",
-        "signature": "MHhi..."
+        "header": "PASTE_HEADER_HERE",
+        "payload": "PASTE_PAYLOAD_HERE",
+        "signature": "PASTE_SIGNATURE_HERE"
     },
     "frame": {
         "version": "1",
-        "name": "Based or Degen Scoreboard",
-        "iconUrl": "https://example.com/icon.png",
-        "homeUrl": "https://example.com",
-        "imageUrl": "https://example.com/hero.png",
+        "name": "Based or Degen?",
+        "iconUrl": "https://ranked-neon.vercel.app/icon.png",
+        "homeUrl": "https://ranked-neon.vercel.app",
+        "imageUrl": "https://ranked-neon.vercel.app/icon.png",
         "buttonTitle": "Check Score",
-        "splashImageUrl": "https://example.com/splash.png",
+        "splashImageUrl": "https://ranked-neon.vercel.app/splash.png",
         "splashBackgroundColor": "#0052FF",
-        "webhookUrl": "https://example.com/api/webhook",
-        "screenshotUrls": [
-            "https://example.com/screenshot1.png"
-        ]
-    },
-    "version": "1"
+        "webhookUrl": "https://ranked-neon.vercel.app/api/webhook"
+    }
 }

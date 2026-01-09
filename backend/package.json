@@ -1,0 +1,22 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "Degen vs Builder Scoreboard Indexer",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "dotenv": "^17.2.3",
+    "prisma": "^5.22.0",
+    "viem": "^2.43.5"
+  }
+}

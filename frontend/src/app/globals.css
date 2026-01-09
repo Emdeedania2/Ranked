@@ -1,0 +1,187 @@
+@import "tailwindcss";
+
+:root {
+  --base-blue: #0052FF;
+  --base-blue-light: #1A5CFF;
+  --base-blue-dark: #0041CC;
+
+  /* Dark theme (default) */
+  --background: #000000;
+  --foreground: #FFFFFF;
+  --card-bg: #0D0D0D;
+  --card-inner: #171717;
+  --border-color: #262626;
+  --secondary: #262626;
+  --secondary-hover: #333333;
+  --muted: #737373;
+  --muted-dark: #525252;
+}
+
+/* Light mode */
+[data-theme="light"] {
+  --background: #FFFFFF;
+  --foreground: #171717;
+  --card-bg: #F5F5F5;
+  --card-inner: #E5E5E5;
+  --border-color: #D4D4D4;
+  --secondary: #E5E5E5;
+  --secondary-hover: #D4D4D4;
+  --muted: #525252;
+  --muted-dark: #737373;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Theme-aware utility classes */
+.text-foreground {
+  color: var(--foreground);
+}
+
+.text-muted {
+  color: var(--muted);
+}
+
+.text-muted-dark {
+  color: var(--muted-dark);
+}
+
+.bg-card {
+  background: var(--card-bg);
+}
+
+.bg-card-inner {
+  background: var(--card-inner);
+}
+
+.bg-secondary {
+  background: var(--secondary);
+}
+
+.bg-secondary:hover, .hover\:bg-secondary-hover:hover {
+  background: var(--secondary-hover);
+}
+
+.border-border {
+  border-color: var(--border-color);
+}
+
+.placeholder-muted::placeholder {
+  color: var(--muted);
+}
+
+/* Component classes */
+.builder-badge {
+  background: var(--base-blue);
+}
+
+.degen-badge {
+  background: linear-gradient(135deg, #FF6B00 0%, #FF8533 100%);
+}
+
+.base-button {
+  background: var(--base-blue);
+  transition: all 0.2s ease;
+}
+
+.base-button:hover {
+  background: var(--base-blue-light);
+  transform: translateY(-1px);
+}
+
+.base-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.base-card:hover {
+  border-color: var(--muted);
+}
+
+/* Light mode card shadows */
+[data-theme="light"] .base-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .base-card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Theme toggle button */
+.theme-toggle {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 9999px;
+  padding: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--foreground);
+}
+
+.theme-toggle:hover {
+  border-color: var(--base-blue);
+}
+
+/* Animations */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.3s ease-out;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--card-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* Light mode scrollbar */
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #F5F5F5;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #D4D4D4;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: #A3A3A3;
+}

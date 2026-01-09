@@ -1,0 +1,22 @@
+{
+    "accountAssociation": {
+        "header": "eyJmaWQiO41MjQ4fQ",
+        "payload": "eyJkb21haW4iOiJexample.com\"}",
+        "signature": "MHhi..."
+    },
+    "frame": {
+        "version": "1",
+        "name": "Based or Degen Scoreboard",
+        "iconUrl": "https://example.com/icon.png",
+        "homeUrl": "https://example.com",
+        "imageUrl": "https://example.com/hero.png",
+        "buttonTitle": "Check Score",
+        "splashImageUrl": "https://example.com/splash.png",
+        "splashBackgroundColor": "#0052FF",
+        "webhookUrl": "https://example.com/api/webhook",
+        "screenshotUrls": [
+            "https://example.com/screenshot1.png"
+        ]
+    },
+    "version": "1"
+}

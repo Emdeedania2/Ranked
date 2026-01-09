@@ -1,0 +1,26 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:../../backend/prisma/dev.db"
+}
+
+model WalletScore {
+  id           String   @id @default(cuid())
+  address      String   @unique
+  builderScore Int      @default(0)
+  degenScore   Int      @default(0)
+  lastUpdated  DateTime @updatedAt
+  createdAt    DateTime @default(now())
+}
+
+model IndexerState {
+  id              String   @id @default("main")
+  lastBlockNumber BigInt   @default(0)
+  updatedAt       DateTime @updatedAt
+}

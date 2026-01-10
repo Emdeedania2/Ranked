@@ -13,12 +13,33 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const appUrl = "https://ranked-neon.vercel.app";
+
 export const metadata: Metadata = {
   title: "Based or Degen? | Base Mini App",
   description: "Discover your onchain identity - are you a Builder or a Degen?",
   manifest: "/manifest.json",
+  openGraph: {
+    title: "Based or Degen?",
+    description: "Discover your onchain identity - are you a Builder or a Degen?",
+    images: [`${appUrl}/og-image.png`],
+  },
   other: {
     "base:app_id": "69615be7b8395f034ac22010",
+    "fc:frame": JSON.stringify({
+      version: "1",
+      imageUrl: `${appUrl}/og-image.png`,
+      button: {
+        title: "Check Your Score",
+        action: {
+          type: "launch_frame",
+          name: "Based or Degen?",
+          url: appUrl,
+          splashImageUrl: `${appUrl}/splash.png`,
+          splashBackgroundColor: "#0052FF",
+        },
+      },
+    }),
   },
 };
 

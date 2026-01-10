@@ -701,12 +701,6 @@ export default function Home() {
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
         </div>
 
-        <div className="inline-flex items-center gap-2 mb-4">
-          <svg width="32" height="32" viewBox="0 0 111 111" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M54.921 110.034C85.359 110.034 110.034 85.402 110.034 55.017C110.034 24.6319 85.359 0 54.921 0C26.0432 0 2.35281 22.1714 0 50.3923H72.8467V59.6416H0C2.35281 87.8625 26.0432 110.034 54.921 110.034Z" fill="#0052FF"/>
-          </svg>
-          <span className="text-2xl font-bold text-[#0052FF]">Base</span>
-        </div>
         <h1 className="text-4xl md:text-5xl font-bold mb-3 tracking-tight text-foreground">
           Based or Degen?
         </h1>
@@ -730,22 +724,32 @@ export default function Home() {
       {/* Action Buttons */}
       <div className="flex flex-wrap justify-center gap-3 mb-8">
         <ConnectButton.Custom>
-          {({ account, chain, openConnectModal, openAccountModal, mounted }) => {
+          {({ account, chain, openConnectModal, openAccountModal, openChainModal, mounted }) => {
             const connected = mounted && account && chain;
             return (
-              <button
-                onClick={connected ? openAccountModal : openConnectModal}
-                className="px-4 py-2 bg-[#0052FF] hover:bg-[#1A5CFF] rounded-full text-sm font-semibold text-white transition-colors"
-              >
-                {connected ? (
-                  <span className="flex items-center gap-2">
-                    <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                    {account.displayName}
-                  </span>
-                ) : (
-                  'Connect Wallet'
+              <div className="flex gap-2">
+                <button
+                  onClick={connected ? openAccountModal : openConnectModal}
+                  className="px-4 py-2 bg-[#0052FF] hover:bg-[#1A5CFF] rounded-full text-sm font-semibold text-white transition-colors"
+                >
+                  {connected ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                      {account.displayName}
+                    </span>
+                  ) : (
+                    'Connect Wallet'
+                  )}
+                </button>
+                {connected && (
+                  <button
+                    onClick={openAccountModal}
+                    className="px-4 py-2 bg-red-500 hover:bg-red-600 rounded-full text-sm font-semibold text-white transition-colors"
+                  >
+                    Disconnect
+                  </button>
                 )}
-              </button>
+              </div>
             );
           }}
         </ConnectButton.Custom>
@@ -859,8 +863,14 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="text-center mt-16 pt-8 border-t border-border">
+        <div className="flex justify-center items-center gap-2 mb-4">
+          <svg width="24" height="24" viewBox="0 0 111 111" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M54.921 110.034C85.359 110.034 110.034 85.402 110.034 55.017C110.034 24.6319 85.359 0 54.921 0C26.0432 0 2.35281 22.1714 0 50.3923H72.8467V59.6416H0C2.35281 87.8625 26.0432 110.034 54.921 110.034Z" fill="#0052FF"/>
+          </svg>
+          <span className="text-lg font-bold text-[#0052FF]">Built on Base</span>
+        </div>
         <div className="flex justify-center items-center gap-2 mb-3">
-          <span className="text-muted text-sm">Powered by</span>
+          <span className="text-muted text-sm">Created by</span>
           <span className="text-[#0052FF] font-semibold text-sm">arabianchief.base.eth</span>
         </div>
         <p className="text-muted-dark text-xs mb-4">

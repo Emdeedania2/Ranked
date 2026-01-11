@@ -196,7 +196,7 @@ function LiveFeed({ activities, wsConnected }: { activities: Activity[]; wsConne
 }
 
 // Wallet Search Component
-function WalletSearch({ onSearch }: { onSearch: (address: string) => void }) {
+function WalletSearch({ onSearch, loading }: { onSearch: (address: string) => void; loading?: boolean }) {
   const [input, setInput] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -210,16 +210,17 @@ function WalletSearch({ onSearch }: { onSearch: (address: string) => void }) {
     <form onSubmit={handleSubmit} className="flex gap-2 mb-6">
       <input
         type="text"
-        placeholder="Enter wallet address or ENS name..."
+        placeholder="Enter address, ENS, or basename (e.g. vitalik.eth, name.base.eth)..."
         value={input}
         onChange={(e) => setInput(e.target.value)}
         className="flex-1 px-4 py-2.5 bg-card border border-border rounded-full text-foreground placeholder-muted focus:outline-none focus:border-[#0052FF] transition-colors"
       />
       <button
         type="submit"
-        className="base-button px-6 py-2.5 rounded-full text-sm font-semibold text-white"
+        disabled={loading}
+        className="base-button px-6 py-2.5 rounded-full text-sm font-semibold text-white disabled:opacity-50"
       >
-        Search
+        {loading ? 'Searching...' : 'Search'}
       </button>
     </form>
   );
@@ -519,6 +520,9 @@ export default function Home() {
   const [selectedWallet, setSelectedWallet] = useState<WalletDetails | null>(null);
   const [showCompare, setShowCompare] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [builderLeaderboard, setBuilderLeaderboard] = useState<WalletScore[]>([]);
+  const [degenLeaderboard, setDegenLeaderboard] = useState<WalletScore[]>([]);
   const itemsPerPage = 20;
 
   // Wagmi hooks
@@ -599,11 +603,29 @@ export default function Home() {
     setError(null);
     try {
       const offset = (currentPage - 1) * itemsPerPage;
-      const response = await fetch(`/api/leaderboard?type=${activeTab}&limit=${itemsPerPage}&offset=${offset}&time=${timeFilter}`);
-      const result: LeaderboardResponse = await response.json();
-      if (result.success) {
-        setData(result.data);
-        setMeta(result.meta);
+
+      // Fetch both builder and degen leaderboards in parallel
+      const [builderResponse, degenResponse, mainResponse] = await Promise.all([
+        fetch(`/api/leaderboard?type=builder&limit=10&offset=0`),
+        fetch(`/api/leaderboard?type=degen&limit=10&offset=0`),
+        fetch(`/api/leaderboard?type=${activeTab}&limit=${itemsPerPage}&offset=${offset}&time=${timeFilter}`)
+      ]);
+
+      const [builderResult, degenResult, mainResult] = await Promise.all([
+        builderResponse.json(),
+        degenResponse.json(),
+        mainResponse.json()
+      ]);
+
+      if (builderResult.success) {
+        setBuilderLeaderboard(builderResult.data);
+      }
+      if (degenResult.success) {
+        setDegenLeaderboard(degenResult.data);
+      }
+      if (mainResult.success) {
+        setData(mainResult.data);
+        setMeta(mainResult.meta);
       } else {
         setError('Failed to fetch leaderboard');
       }
@@ -641,16 +663,36 @@ export default function Home() {
 
   // Search wallet
   const handleSearch = async (address: string) => {
+    setSearchLoading(true);
     try {
-      const response = await fetch(`/api/wallet/${address}`);
+      const response = await fetch(`/api/wallet/${encodeURIComponent(address)}`);
       const result = await response.json();
       if (result.success && result.data) {
         setSelectedWallet(result.data);
+
+        // Also add to leaderboard for tracking
+        try {
+          await fetch('/api/leaderboard', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              address: result.data.address,
+              builderScore: result.data.builderScore,
+              degenScore: result.data.degenScore,
+            }),
+          });
+          // Refresh leaderboards after adding
+          fetchLeaderboard();
+        } catch {
+          // Ignore leaderboard update errors
+        }
       } else {
-        alert('Wallet not found in database');
+        alert(result.error || 'Wallet not found');
       }
     } catch {
       alert('Failed to search wallet');
+    } finally {
+      setSearchLoading(false);
     }
   };
 
@@ -658,7 +700,12 @@ export default function Home() {
   const handleShare = async () => {
     if (!selectedWallet) return;
 
-    const text = `I'm ${selectedWallet.builderPercentage}% Builder and ${selectedWallet.degenPercentage}% Degen on Base! My personality: ${selectedWallet.personality}\n\nCheck your score:`;
+    const miniAppUrl = 'https://ranked-neon.vercel.app';
+    const text = `I'm ${selectedWallet.builderPercentage}% Builder and ${selectedWallet.degenPercentage}% Degen on @base! 🔵
+
+My personality: ${selectedWallet.personality}
+
+Check your score on the Based or Degen mini-app: ${miniAppUrl}`;
 
     if (isInMiniApp) {
       const opened = await openWarpcastCompose(text);
@@ -719,7 +766,7 @@ export default function Home() {
       {activities.length > 0 && <LiveFeed activities={activities} wsConnected={wsConnected} />}
 
       {/* Wallet Search */}
-      <WalletSearch onSearch={handleSearch} />
+      <WalletSearch onSearch={handleSearch} loading={searchLoading} />
 
       {/* Action Buttons */}
       <div className="flex flex-wrap justify-center gap-3 mb-8">
@@ -760,6 +807,67 @@ export default function Home() {
           Compare Wallets
         </button>
       </div>
+
+      {/* Top Leaderboards - Side by Side */}
+      {(builderLeaderboard.length > 0 || degenLeaderboard.length > 0) && (
+        <div className="grid md:grid-cols-2 gap-6 mb-8">
+          {/* Top Builders */}
+          <div className="base-card p-4">
+            <h3 className="text-lg font-bold text-[#0052FF] mb-4 flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-[#0052FF]"></span>
+              Top Builders
+            </h3>
+            <div className="space-y-2">
+              {builderLeaderboard.slice(0, 5).map((wallet, index) => (
+                <div
+                  key={wallet.address}
+                  onClick={() => handleSearch(wallet.address)}
+                  className="flex items-center justify-between p-2 hover:bg-card-inner rounded-lg cursor-pointer transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`text-sm font-bold ${index === 0 ? 'text-yellow-500' : index === 1 ? 'text-gray-400' : index === 2 ? 'text-orange-400' : 'text-muted'}`}>
+                      #{index + 1}
+                    </span>
+                    <AddressDisplay address={wallet.address} className="font-mono text-xs text-foreground" />
+                  </div>
+                  <span className="text-sm font-semibold text-[#0052FF]">{wallet.builderScore} pts</span>
+                </div>
+              ))}
+              {builderLeaderboard.length === 0 && (
+                <p className="text-muted text-sm text-center py-4">No builders yet - be the first!</p>
+              )}
+            </div>
+          </div>
+
+          {/* Top Degens */}
+          <div className="base-card p-4">
+            <h3 className="text-lg font-bold text-[#FF6B00] mb-4 flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-[#FF6B00]"></span>
+              Top Degens
+            </h3>
+            <div className="space-y-2">
+              {degenLeaderboard.slice(0, 5).map((wallet, index) => (
+                <div
+                  key={wallet.address}
+                  onClick={() => handleSearch(wallet.address)}
+                  className="flex items-center justify-between p-2 hover:bg-card-inner rounded-lg cursor-pointer transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`text-sm font-bold ${index === 0 ? 'text-yellow-500' : index === 1 ? 'text-gray-400' : index === 2 ? 'text-orange-400' : 'text-muted'}`}>
+                      #{index + 1}
+                    </span>
+                    <AddressDisplay address={wallet.address} className="font-mono text-xs text-foreground" />
+                  </div>
+                  <span className="text-sm font-semibold text-[#FF6B00]">{wallet.degenScore} pts</span>
+                </div>
+              ))}
+              {degenLeaderboard.length === 0 && (
+                <p className="text-muted text-sm text-center py-4">No degens yet - be the first!</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tab Switcher */}
       <div className="flex justify-center mb-4">

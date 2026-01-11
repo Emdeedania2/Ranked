@@ -110,12 +110,29 @@ export async function fetchWalletScore(
           dappInteractions[KNOWN_DAPPS[toAddress]] = (dappInteractions[KNOWN_DAPPS[toAddress]] || 0) + 1;
         }
 
-        // Calculate volume from transaction value
-        if (tx.value) {
-          const valueWei = BigInt(tx.value);
-          const valueEth = Number(valueWei) / 1e18;
-          // Approximate USD value (using rough ETH price estimate)
-          totalVolumeUSD += valueEth * 2500; // Rough estimate
+        // Calculate volume from transaction value (ETH transfers)
+        if (tx.value && tx.value !== '0') {
+          try {
+            const valueWei = BigInt(tx.value);
+            const valueEth = Number(valueWei) / 1e18;
+            // Use current approximate ETH price (~$3500 in 2025)
+            if (valueEth > 0.0001) { // Filter dust
+              totalVolumeUSD += valueEth * 3500;
+            }
+          } catch {
+            // Skip invalid values
+          }
+        }
+
+        // Also check tx.fee for gas costs
+        if (tx.fee?.value) {
+          try {
+            const feeWei = BigInt(tx.fee.value);
+            const feeEth = Number(feeWei) / 1e18;
+            totalVolumeUSD += feeEth * 3500;
+          } catch {
+            // Skip invalid values
+          }
         }
 
         // Contract deployment
@@ -162,13 +179,32 @@ export async function fetchWalletScore(
         const toAddress = transfer.to?.hash?.toLowerCase() || '';
 
         // Add to volume estimate from token transfers
-        if (transfer.total?.value) {
-          const decimals = transfer.total?.decimals || 18;
-          const value = Number(transfer.total.value) / Math.pow(10, decimals);
-          // For stablecoins, use direct value; for others, estimate
-          if (transfer.token?.symbol === 'USDC' || transfer.token?.symbol === 'USDT' || transfer.token?.symbol === 'DAI') {
-            totalVolumeUSD += value;
+        const tokenSymbol = transfer.token?.symbol?.toUpperCase() || '';
+        const tokenDecimals = parseInt(transfer.token?.decimals) || 18;
+
+        // Try to get the value from different possible fields
+        let rawValue = transfer.total?.value || transfer.value || '0';
+
+        try {
+          if (rawValue && rawValue !== '0') {
+            const value = Number(rawValue) / Math.pow(10, tokenDecimals);
+
+            // Stablecoins - direct USD value
+            if (['USDC', 'USDT', 'DAI', 'USDB', 'USDbC'].includes(tokenSymbol)) {
+              totalVolumeUSD += value;
+            }
+            // WETH - use ETH price
+            else if (['WETH', 'ETH'].includes(tokenSymbol)) {
+              totalVolumeUSD += value * 3500;
+            }
+            // Other tokens - estimate based on a rough average value
+            else if (value > 0) {
+              // Assume average token price of $0.10 for unknown tokens
+              totalVolumeUSD += value * 0.1;
+            }
           }
+        } catch {
+          // Skip invalid values
         }
 
         if (fromAddress === normalizedAddress) {

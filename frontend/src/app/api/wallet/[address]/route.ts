@@ -6,6 +6,9 @@ import { normalize } from 'viem/ens';
 
 export const dynamic = 'force-dynamic';
 
+// Base Name Service L2 Resolver address
+const BASE_NAME_RESOLVER = '0xC6d566A56A1aFf6508b41f6c90ff131615583BCD';
+
 // ENS/Basename resolution clients
 const mainnetClient = createPublicClient({
   chain: mainnet,
@@ -20,34 +23,60 @@ const baseClient = createPublicClient({
 // Resolve ENS or Basename to address
 async function resolveNameToAddress(name: string): Promise<string | null> {
   try {
-    // Try ENS first (mainnet) for .eth names
-    if (name.endsWith('.eth') && !name.endsWith('.base.eth')) {
+    // Handle .base.eth names using Base Name Service
+    if (name.endsWith('.base.eth')) {
+      // Use the Base Name Service API
+      const baseName = name.replace('.base.eth', '');
+      try {
+        // Try using Blockscout's name resolution
+        const response = await fetch(
+          `https://base.blockscout.com/api/v2/addresses/${encodeURIComponent(name)}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          if (data.hash) return data.hash;
+        }
+      } catch {
+        // Fallback to viem resolution
+      }
+
+      // Try viem resolution with Base's universal resolver
+      const address = await baseClient.getEnsAddress({
+        name: normalize(name),
+        universalResolverAddress: BASE_NAME_RESOLVER,
+      }).catch(() => null);
+
+      if (address) return address;
+
+      // Try without universal resolver as last resort
+      const address2 = await baseClient.getEnsAddress({
+        name: normalize(name),
+      }).catch(() => null);
+
+      return address2;
+    }
+
+    // Handle regular .eth names (ENS on mainnet)
+    if (name.endsWith('.eth')) {
       const address = await mainnetClient.getEnsAddress({
         name: normalize(name),
       });
       return address;
     }
 
-    // Try Basename for .base.eth names
-    if (name.endsWith('.base.eth')) {
-      const address = await baseClient.getEnsAddress({
-        name: normalize(name),
-      });
-      return address;
-    }
+    // For names without suffix, try adding .base.eth first, then .eth
+    // Try as basename first
+    const baseNameFull = `${name}.base.eth`;
+    const baseAddress = await resolveNameToAddress(baseNameFull);
+    if (baseAddress) return baseAddress;
 
-    // Try both if no specific suffix
+    // Try as ENS
+    const ensNameFull = `${name}.eth`;
     const ensAddress = await mainnetClient.getEnsAddress({
-      name: normalize(name),
+      name: normalize(ensNameFull),
     }).catch(() => null);
 
-    if (ensAddress) return ensAddress;
-
-    const baseAddress = await baseClient.getEnsAddress({
-      name: normalize(name),
-    }).catch(() => null);
-
-    return baseAddress;
+    return ensAddress;
   } catch (error) {
     console.log('Name resolution failed:', error);
     return null;

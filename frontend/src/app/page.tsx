@@ -446,11 +446,11 @@ function CompareMode({ onClose }: { onClose: () => void }) {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-[#0052FF]">Builder</span>
-                    <span className="text-foreground">{wallet.builderScore} pts</span>
+                    <span className="text-foreground">{wallet.builderPercentage || 50}%</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#FF6B00]">Degen</span>
-                    <span className="text-foreground">{wallet.degenScore} pts</span>
+                    <span className="text-foreground">{wallet.degenPercentage || 50}%</span>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1 mt-3">
@@ -503,7 +503,7 @@ function LeaderboardCard({
             className="font-mono text-sm text-foreground hover:text-[#0052FF] transition-colors"
           />
           <div className="text-xs text-muted mt-1">
-            Builder: {wallet.builderScore} | Degen: {wallet.degenScore}
+            {wallet.totalTransactions?.toLocaleString() || 0} transactions
           </div>
         </div>
       </div>
@@ -935,7 +935,7 @@ Check your score: ${miniAppUrl}`;
                     </span>
                     <AddressDisplay address={wallet.address} className="font-mono text-xs text-foreground" />
                   </div>
-                  <span className="text-sm font-semibold text-[#0052FF]">{wallet.builderScore} pts</span>
+                  <span className="text-sm font-semibold text-[#0052FF]">{wallet.totalTransactions?.toLocaleString() || 0} txns</span>
                 </div>
               ))}
               {builderLeaderboard.length === 0 && (
@@ -963,7 +963,7 @@ Check your score: ${miniAppUrl}`;
                     </span>
                     <AddressDisplay address={wallet.address} className="font-mono text-xs text-foreground" />
                   </div>
-                  <span className="text-sm font-semibold text-[#FF6B00]">{wallet.degenScore} pts</span>
+                  <span className="text-sm font-semibold text-[#FF6B00]">{wallet.totalTransactions?.toLocaleString() || 0} txns</span>
                 </div>
               ))}
               {degenLeaderboard.length === 0 && (

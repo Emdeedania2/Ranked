@@ -12,9 +12,44 @@ export interface WalletScore {
   tokenTransfers: number;
   classification: 'Builder' | 'Degen' | 'Balanced' | 'New';
   ethBalance: string;
+  totalVolumeUSD: number;
+  topDapp: string;
+  topDappInteractions: number;
 }
 
-export async function fetchWalletScore(address: string): Promise<WalletScore> {
+export interface AnalysisProgress {
+  stage: string;
+  progress: number;
+}
+
+// Known dApp contract addresses on Base
+const KNOWN_DAPPS: Record<string, string> = {
+  '0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad': 'Uniswap',
+  '0x2626664c2603336e57b271c5c0b26f421741e481': 'Uniswap V3',
+  '0x198ef79f1f515f02dfe9e3115ed9fc07183f02fc': 'Aerodrome',
+  '0xcf77a3ba9a5ca399b7c97c74d54e5b1beb874e43': 'Aerodrome Router',
+  '0x6cb442acf35158d5eda88fe602571dbe4e0c5cd5': 'BaseSwap',
+  '0x327df1e6de05895d2ab08513aadd9313fe505d86': 'SushiSwap',
+  '0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae': 'LI.FI',
+  '0x0000000000001ff3684f28c67538d4d072c22734': 'Across Bridge',
+  '0x49048044d57e1c92a77f79988d21fa8faf74e97e': 'Base Bridge',
+  '0x8453fc6cd17a1654029e0d40610527ef9ed56e7a': 'Friend.tech',
+  '0xc5a076cad94176c2996b32d8466be1ce757faa27': 'Mint.fun',
+  '0x00000000000000adc04c56bf30ac9d3c0aaf14dc': 'Seaport (OpenSea)',
+  '0x0000000000a39bb272e79075ade125fd351887ac': 'Blur',
+  '0xd4416b13d2b3a9abae7acd5d6c2bbdbe25686401': 'PoolTogether',
+  '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': 'USDC',
+  '0x4200000000000000000000000000000000000006': 'WETH',
+  '0x532f27101965dd16442e59d40670faf5ebb142e4': 'Brett Token',
+  '0xac1bd2486aaf3b5c0fc3fd868558b082a531b2b4': 'Toshi Token',
+};
+
+type ProgressCallback = (progress: AnalysisProgress) => void;
+
+export async function fetchWalletScore(
+  address: string,
+  onProgress?: ProgressCallback
+): Promise<WalletScore> {
   const normalizedAddress = address.toLowerCase();
 
   let builderScore = 0;
@@ -23,27 +58,27 @@ export async function fetchWalletScore(address: string): Promise<WalletScore> {
   let tokenTransfers = 0;
   let totalTransactions = 0;
   let ethBalance = '0';
+  let totalVolumeUSD = 0;
+  const dappInteractions: Record<string, number> = {};
 
   try {
-    // Get address info from Blockscout
+    // Stage 1: Get address info (10%)
+    onProgress?.({ stage: 'Fetching wallet info...', progress: 10 });
+
     const addressResponse = await fetch(`${BLOCKSCOUT_API}/addresses/${normalizedAddress}`);
 
     if (addressResponse.ok) {
       const addressData = await addressResponse.json();
 
-      // Get ETH balance
       if (addressData.coin_balance) {
         const balanceWei = BigInt(addressData.coin_balance);
         ethBalance = (Number(balanceWei) / 1e18).toFixed(4);
       }
-
-      // Check if this address is a contract creator
-      if (addressData.creator_address_hash) {
-        // This address was created, so it's a contract - check who created it
-      }
     }
 
-    // Get counters for accurate transaction count
+    // Stage 2: Get counters (25%)
+    onProgress?.({ stage: 'Analyzing transaction counts...', progress: 25 });
+
     const countersResponse = await fetch(
       `${BLOCKSCOUT_API}/addresses/${normalizedAddress}/counters`
     );
@@ -54,9 +89,11 @@ export async function fetchWalletScore(address: string): Promise<WalletScore> {
       tokenTransfers = parseInt(counters.token_transfers_count) || 0;
     }
 
-    // Fetch transactions to analyze activity
+    // Stage 3: Fetch transactions to analyze activity (40%)
+    onProgress?.({ stage: 'Analyzing transactions...', progress: 40 });
+
     const txResponse = await fetch(
-      `${BLOCKSCOUT_API}/addresses/${normalizedAddress}/transactions`
+      `${BLOCKSCOUT_API}/addresses/${normalizedAddress}/transactions?limit=50`
     );
 
     if (txResponse.ok) {
@@ -65,11 +102,25 @@ export async function fetchWalletScore(address: string): Promise<WalletScore> {
 
       for (const tx of transactions) {
         const fromAddress = tx.from?.hash?.toLowerCase() || '';
+        const toAddress = tx.to?.hash?.toLowerCase() || '';
         const isOutgoing = fromAddress === normalizedAddress;
+
+        // Track dApp interactions
+        if (toAddress && KNOWN_DAPPS[toAddress]) {
+          dappInteractions[KNOWN_DAPPS[toAddress]] = (dappInteractions[KNOWN_DAPPS[toAddress]] || 0) + 1;
+        }
+
+        // Calculate volume from transaction value
+        if (tx.value) {
+          const valueWei = BigInt(tx.value);
+          const valueEth = Number(valueWei) / 1e18;
+          // Approximate USD value (using rough ETH price estimate)
+          totalVolumeUSD += valueEth * 2500; // Rough estimate
+        }
 
         // Contract deployment
         if (tx.created_contract && isOutgoing) {
-          builderScore += 10; // High points for deploying contracts
+          builderScore += 10;
           contractsDeployed++;
           continue;
         }
@@ -78,22 +129,28 @@ export async function fetchWalletScore(address: string): Promise<WalletScore> {
         if (isOutgoing) {
           const txTypes = tx.transaction_types || [];
 
-          // Contract interactions
           if (txTypes.includes('contract_call')) {
             degenScore += 1;
           }
 
-          // Token minting
           if (tx.method === 'mint' || tx.method === 'claim') {
             degenScore += 2;
+          }
+
+          // Swap/trade detection
+          if (tx.method === 'swap' || tx.method === 'swapExactTokensForTokens' ||
+              tx.method === 'swapExactETHForTokens' || tx.method === 'execute') {
+            degenScore += 3;
           }
         }
       }
     }
 
-    // Fetch token transfers for degen scoring
+    // Stage 4: Fetch token transfers (60%)
+    onProgress?.({ stage: 'Analyzing token transfers...', progress: 60 });
+
     const tokenResponse = await fetch(
-      `${BLOCKSCOUT_API}/addresses/${normalizedAddress}/token-transfers`
+      `${BLOCKSCOUT_API}/addresses/${normalizedAddress}/token-transfers?limit=50`
     );
 
     if (tokenResponse.ok) {
@@ -104,17 +161,47 @@ export async function fetchWalletScore(address: string): Promise<WalletScore> {
         const fromAddress = transfer.from?.hash?.toLowerCase() || '';
         const toAddress = transfer.to?.hash?.toLowerCase() || '';
 
-        // Outgoing transfers = active trading
+        // Add to volume estimate from token transfers
+        if (transfer.total?.value) {
+          const decimals = transfer.total?.decimals || 18;
+          const value = Number(transfer.total.value) / Math.pow(10, decimals);
+          // For stablecoins, use direct value; for others, estimate
+          if (transfer.token?.symbol === 'USDC' || transfer.token?.symbol === 'USDT' || transfer.token?.symbol === 'DAI') {
+            totalVolumeUSD += value;
+          }
+        }
+
         if (fromAddress === normalizedAddress) {
           degenScore += 2;
         }
 
-        // Incoming NFT/token = collecting
         if (toAddress === normalizedAddress) {
           degenScore += 1;
         }
       }
     }
+
+    // Stage 5: Analyze internal transactions for more dApp data (80%)
+    onProgress?.({ stage: 'Analyzing dApp interactions...', progress: 80 });
+
+    const internalTxResponse = await fetch(
+      `${BLOCKSCOUT_API}/addresses/${normalizedAddress}/internal-transactions?limit=50`
+    );
+
+    if (internalTxResponse.ok) {
+      const internalData = await internalTxResponse.json();
+      const internalTxs = internalData.items || [];
+
+      for (const tx of internalTxs) {
+        const toAddress = tx.to?.hash?.toLowerCase() || '';
+        if (toAddress && KNOWN_DAPPS[toAddress]) {
+          dappInteractions[KNOWN_DAPPS[toAddress]] = (dappInteractions[KNOWN_DAPPS[toAddress]] || 0) + 1;
+        }
+      }
+    }
+
+    // Stage 6: Final calculations (90%)
+    onProgress?.({ stage: 'Calculating scores...', progress: 90 });
 
     // Bonus points based on total activity
     if (totalTransactions > 1000) builderScore += 5;
@@ -122,8 +209,22 @@ export async function fetchWalletScore(address: string): Promise<WalletScore> {
     if (tokenTransfers > 100) degenScore += 5;
     if (tokenTransfers > 50) degenScore += 2;
 
+    // Stage 7: Complete (100%)
+    onProgress?.({ stage: 'Analysis complete!', progress: 100 });
+
   } catch (error) {
     console.error('Error fetching wallet data:', error);
+    onProgress?.({ stage: 'Error fetching data', progress: 100 });
+  }
+
+  // Find top dApp
+  let topDapp = 'None';
+  let topDappInteractions = 0;
+  for (const [dapp, count] of Object.entries(dappInteractions)) {
+    if (count > topDappInteractions) {
+      topDapp = dapp;
+      topDappInteractions = count;
+    }
   }
 
   // Determine classification
@@ -150,5 +251,62 @@ export async function fetchWalletScore(address: string): Promise<WalletScore> {
     tokenTransfers,
     classification,
     ethBalance,
+    totalVolumeUSD: Math.round(totalVolumeUSD),
+    topDapp,
+    topDappInteractions,
   };
+}
+
+// Fetch top wallets from recent blocks for leaderboard
+export async function fetchTopWallets(limit: number = 20): Promise<WalletScore[]> {
+  const wallets: WalletScore[] = [];
+  const seenAddresses = new Set<string>();
+
+  try {
+    // Fetch recent blocks to find active wallets
+    const blocksResponse = await fetch(`${BLOCKSCOUT_API}/blocks?limit=10`);
+
+    if (blocksResponse.ok) {
+      const blocksData = await blocksResponse.json();
+      const blocks = blocksData.items || [];
+
+      for (const block of blocks) {
+        // Fetch transactions from each block
+        const blockTxResponse = await fetch(
+          `${BLOCKSCOUT_API}/blocks/${block.height}/transactions?limit=20`
+        );
+
+        if (blockTxResponse.ok) {
+          const blockTxData = await blockTxResponse.json();
+          const transactions = blockTxData.items || [];
+
+          for (const tx of transactions) {
+            const fromAddress = tx.from?.hash?.toLowerCase();
+
+            if (fromAddress && !seenAddresses.has(fromAddress) && seenAddresses.size < limit * 2) {
+              seenAddresses.add(fromAddress);
+
+              // Fetch score for this wallet (without progress callback for background fetch)
+              try {
+                const score = await fetchWalletScore(fromAddress);
+                if (score.totalTransactions > 0) {
+                  wallets.push(score);
+                }
+              } catch {
+                // Skip wallets that fail to fetch
+              }
+
+              if (wallets.length >= limit) break;
+            }
+          }
+        }
+
+        if (wallets.length >= limit) break;
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching top wallets:', error);
+  }
+
+  return wallets.slice(0, limit);
 }

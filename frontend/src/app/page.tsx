@@ -14,21 +14,26 @@ interface WalletScore {
   address: string;
   builderScore: number;
   degenScore: number;
-  lastUpdated: string;
+  totalTransactions?: number;
+  rank?: number;
 }
 
 interface WalletDetails {
   address: string;
   builderScore: number;
   degenScore: number;
-  builderRank: number;
-  degenRank: number;
-  totalWallets: number;
   builderPercentage: number;
   degenPercentage: number;
   personality: string;
   badges: string[];
-  lastUpdated: string;
+  stats: {
+    totalTransactions: number;
+    contractsDeployed: number;
+    tokenTransfers: number;
+    totalVolumeUSD: number;
+    topDapp: string;
+    topDappInteractions: number;
+  };
 }
 
 interface LeaderboardResponse {
@@ -37,7 +42,6 @@ interface LeaderboardResponse {
   meta: {
     count: number;
     type: string;
-    lastBlockProcessed: string;
     lastUpdated: string | null;
     totalCount?: number;
   };
@@ -48,6 +52,11 @@ interface Activity {
   type: 'builder' | 'degen';
   score: number;
   timestamp: string;
+}
+
+interface AnalysisProgress {
+  stage: string;
+  progress: number;
 }
 
 // ENS/Basename resolution clients
@@ -195,8 +204,30 @@ function LiveFeed({ activities, wsConnected }: { activities: Activity[]; wsConne
   );
 }
 
+// Analysis Progress Bar Component
+function AnalysisProgressBar({ progress, stage }: { progress: number; stage: string }) {
+  return (
+    <div className="base-card p-4 mb-6 animate-fade-in">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-foreground">{stage}</span>
+        <span className="text-sm font-bold text-[#0052FF]">{progress}%</span>
+      </div>
+      <div className="h-3 bg-card-inner rounded-full overflow-hidden">
+        <div
+          className="h-full progress-bar rounded-full transition-all duration-300 ease-out"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // Wallet Search Component
-function WalletSearch({ onSearch, loading }: { onSearch: (address: string) => void; loading?: boolean }) {
+function WalletSearch({ onSearch, loading, progress }: {
+  onSearch: (address: string) => void;
+  loading?: boolean;
+  progress?: AnalysisProgress | null;
+}) {
   const [input, setInput] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -207,23 +238,38 @@ function WalletSearch({ onSearch, loading }: { onSearch: (address: string) => vo
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2 mb-6">
-      <input
-        type="text"
-        placeholder="Enter address, ENS, or basename (e.g. vitalik.eth, name.base.eth)..."
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        className="flex-1 px-4 py-2.5 bg-card border border-border rounded-full text-foreground placeholder-muted focus:outline-none focus:border-[#0052FF] transition-colors"
-      />
-      <button
-        type="submit"
-        disabled={loading}
-        className="base-button px-6 py-2.5 rounded-full text-sm font-semibold text-white disabled:opacity-50"
-      >
-        {loading ? 'Searching...' : 'Search'}
-      </button>
-    </form>
+    <div className="mb-6">
+      <form onSubmit={handleSubmit} className="flex gap-2 mb-4">
+        <input
+          type="text"
+          placeholder="Enter address, ENS, or basename (e.g. vitalik.eth, name.base.eth)..."
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          className="flex-1 px-4 py-2.5 bg-card border border-border rounded-full text-foreground placeholder-muted focus:outline-none focus:border-[#0052FF] transition-colors"
+        />
+        <button
+          type="submit"
+          disabled={loading}
+          className="base-button px-6 py-2.5 rounded-full text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {loading ? 'Analyzing...' : 'Analyze'}
+        </button>
+      </form>
+      {loading && progress && (
+        <AnalysisProgressBar progress={progress.progress} stage={progress.stage} />
+      )}
+    </div>
   );
+}
+
+// Format USD value
+function formatUSD(value: number): string {
+  if (value >= 1000000) {
+    return `$${(value / 1000000).toFixed(2)}M`;
+  } else if (value >= 1000) {
+    return `$${(value / 1000).toFixed(1)}K`;
+  }
+  return `$${value.toLocaleString()}`;
 }
 
 // Personality Card Component
@@ -233,8 +279,8 @@ function PersonalityCard({ wallet, onClose, onShare }: { wallet: WalletDetails; 
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="base-card p-6 max-w-md w-full animate-scale-in">
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="base-card p-6 max-w-md w-full animate-scale-in my-8">
         <div className="text-center mb-6">
           <h3 className="text-2xl font-bold text-foreground mb-2">{wallet.personality}</h3>
           <AddressDisplay address={wallet.address} className="text-muted font-mono text-sm" />
@@ -268,17 +314,44 @@ function PersonalityCard({ wallet, onClose, onShare }: { wallet: WalletDetails; 
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
+        {/* Detailed Stats */}
+        <div className="grid grid-cols-2 gap-3 mb-6">
           <div className="text-center p-3 bg-card-inner rounded-lg">
-            <p className="text-2xl font-bold text-[#0052FF]">#{wallet.builderRank}</p>
-            <p className="text-xs text-muted">Builder Rank</p>
+            <p className="text-xl font-bold text-foreground">
+              <AnimatedCounter value={wallet.stats.totalTransactions} />
+            </p>
+            <p className="text-xs text-muted">Total Transactions</p>
           </div>
           <div className="text-center p-3 bg-card-inner rounded-lg">
-            <p className="text-2xl font-bold text-[#FF6B00]">#{wallet.degenRank}</p>
-            <p className="text-xs text-muted">Degen Rank</p>
+            <p className="text-xl font-bold text-green-500">
+              {formatUSD(wallet.stats.totalVolumeUSD)}
+            </p>
+            <p className="text-xs text-muted">Total Volume</p>
+          </div>
+          <div className="text-center p-3 bg-card-inner rounded-lg">
+            <p className="text-xl font-bold text-[#0052FF]">
+              <AnimatedCounter value={wallet.stats.contractsDeployed} />
+            </p>
+            <p className="text-xs text-muted">Contracts Deployed</p>
+          </div>
+          <div className="text-center p-3 bg-card-inner rounded-lg">
+            <p className="text-xl font-bold text-[#FF6B00]">
+              <AnimatedCounter value={wallet.stats.tokenTransfers} />
+            </p>
+            <p className="text-xs text-muted">Token Transfers</p>
           </div>
         </div>
+
+        {/* Top dApp */}
+        {wallet.stats.topDapp && wallet.stats.topDapp !== 'None' && (
+          <div className="mb-6 p-3 bg-card-inner rounded-lg">
+            <p className="text-xs text-muted mb-1">Top dApp Interaction</p>
+            <div className="flex items-center justify-between">
+              <span className="text-lg font-bold text-foreground">{wallet.stats.topDapp}</span>
+              <span className="text-sm text-muted">{wallet.stats.topDappInteractions} interactions</span>
+            </div>
+          </div>
+        )}
 
         {/* Badges */}
         {wallet.badges.length > 0 && (
@@ -302,7 +375,7 @@ function PersonalityCard({ wallet, onClose, onShare }: { wallet: WalletDetails; 
           </button>
           <button
             onClick={onClose}
-            className="px-4 py-2.5 bg-secondary hover:bg-secondary-hover rounded-full text-sm font-semibold text-foreground transition-colors"
+            className="px-4 py-2.5 liquid-glass rounded-full text-sm font-semibold text-foreground"
           >
             Close
           </button>
@@ -521,6 +594,7 @@ export default function Home() {
   const [showCompare, setShowCompare] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const [builderLeaderboard, setBuilderLeaderboard] = useState<WalletScore[]>([]);
   const [degenLeaderboard, setDegenLeaderboard] = useState<WalletScore[]>([]);
   const itemsPerPage = 20;
@@ -661,13 +735,40 @@ export default function Home() {
     setCurrentPage(1);
   }, [activeTab, timeFilter]);
 
-  // Search wallet
+  // Search wallet with progress simulation
   const handleSearch = async (address: string) => {
     setSearchLoading(true);
+    setAnalysisProgress({ stage: 'Resolving address...', progress: 5 });
+
+    // Simulate progress stages
+    const progressStages = [
+      { stage: 'Fetching wallet info...', progress: 15 },
+      { stage: 'Analyzing transaction counts...', progress: 30 },
+      { stage: 'Analyzing transactions...', progress: 50 },
+      { stage: 'Analyzing token transfers...', progress: 65 },
+      { stage: 'Analyzing dApp interactions...', progress: 80 },
+      { stage: 'Calculating scores...', progress: 90 },
+    ];
+
+    // Start progress animation
+    let currentStage = 0;
+    const progressInterval = setInterval(() => {
+      if (currentStage < progressStages.length) {
+        setAnalysisProgress(progressStages[currentStage]);
+        currentStage++;
+      }
+    }, 400);
+
     try {
       const response = await fetch(`/api/wallet/${encodeURIComponent(address)}`);
       const result = await response.json();
+
+      clearInterval(progressInterval);
+      setAnalysisProgress({ stage: 'Analysis complete!', progress: 100 });
+
       if (result.success && result.data) {
+        // Small delay to show 100%
+        await new Promise(resolve => setTimeout(resolve, 300));
         setSelectedWallet(result.data);
 
         // Also add to leaderboard for tracking
@@ -679,6 +780,7 @@ export default function Home() {
               address: result.data.address,
               builderScore: result.data.builderScore,
               degenScore: result.data.degenScore,
+              totalTransactions: result.data.stats?.totalTransactions || 0,
             }),
           });
           // Refresh leaderboards after adding
@@ -690,9 +792,11 @@ export default function Home() {
         alert(result.error || 'Wallet not found');
       }
     } catch {
+      clearInterval(progressInterval);
       alert('Failed to search wallet');
     } finally {
       setSearchLoading(false);
+      setAnalysisProgress(null);
     }
   };
 
@@ -700,12 +804,13 @@ export default function Home() {
   const handleShare = async () => {
     if (!selectedWallet) return;
 
-    const miniAppUrl = 'https://ranked-neon.vercel.app';
+    const miniAppUrl = 'https://base.app/app/ranked-neon.vercel.app/';
     const text = `I'm ${selectedWallet.builderPercentage}% Builder and ${selectedWallet.degenPercentage}% Degen on @base! 🔵
 
 My personality: ${selectedWallet.personality}
+📊 ${selectedWallet.stats.totalTransactions.toLocaleString()} transactions | ${formatUSD(selectedWallet.stats.totalVolumeUSD)} volume
 
-Check your score on the Based or Degen mini-app: ${miniAppUrl}`;
+Check your score: ${miniAppUrl}`;
 
     if (isInMiniApp) {
       const opened = await openWarpcastCompose(text);
@@ -755,9 +860,9 @@ Check your score on the Based or Degen mini-app: ${miniAppUrl}`;
         {isInMiniApp && (
           <p className="text-xs text-[#0052FF] mt-2">Running in Base App</p>
         )}
-        {meta && (
+        {meta && meta.lastUpdated && (
           <p className="text-xs text-muted-dark mt-2">
-            Block #{meta.lastBlockProcessed} | {meta.lastUpdated ? new Date(meta.lastUpdated).toLocaleString() : 'Syncing...'}
+            Last updated: {new Date(meta.lastUpdated).toLocaleString()}
           </p>
         )}
       </header>
@@ -766,7 +871,7 @@ Check your score on the Based or Degen mini-app: ${miniAppUrl}`;
       {activities.length > 0 && <LiveFeed activities={activities} wsConnected={wsConnected} />}
 
       {/* Wallet Search */}
-      <WalletSearch onSearch={handleSearch} loading={searchLoading} />
+      <WalletSearch onSearch={handleSearch} loading={searchLoading} progress={analysisProgress} />
 
       {/* Action Buttons */}
       <div className="flex flex-wrap justify-center gap-3 mb-8">
@@ -802,7 +907,7 @@ Check your score on the Based or Degen mini-app: ${miniAppUrl}`;
         </ConnectButton.Custom>
         <button
           onClick={() => setShowCompare(true)}
-          className="px-4 py-2 bg-secondary hover:bg-secondary-hover rounded-full text-sm font-semibold text-foreground transition-colors"
+          className="px-4 py-2 liquid-glass rounded-full text-sm font-semibold text-foreground"
         >
           Compare Wallets
         </button>
@@ -982,7 +1087,7 @@ Check your score on the Based or Degen mini-app: ${miniAppUrl}`;
           <span className="text-[#0052FF] font-semibold text-sm">arabianchief.base.eth</span>
         </div>
         <p className="text-muted-dark text-xs mb-4">
-          2+ Contract Deploys = Builder | 5+ In-App Trades = Degen
+          2+ Contract Deploys = Builder | 5+ Trades = Degen
         </p>
         <p className="text-muted text-xs italic max-w-md mx-auto">
           <span className="text-[#0052FF]">Builders</span> create and deploy smart contracts, contributing to the ecosystem. <span className="text-[#FF6B00]">Degens</span> actively trade and interact with apps, driving onchain activity.

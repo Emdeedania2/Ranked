@@ -55,7 +55,7 @@ async function resolveNameToAddress(name: string): Promise<string | null> {
 }
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ address: string }> }
 ) {
   try {
@@ -82,7 +82,7 @@ export async function GET(
       );
     }
 
-    // Fetch live data from Basescan
+    // Fetch live data from Blockscout
     const walletData = await fetchWalletScore(address);
 
     // Calculate personality percentage
@@ -119,57 +119,9 @@ export async function GET(
     if (Math.abs(builderPercentage - 50) <= 10) badges.push('Balanced');
     if (walletData.classification === 'Builder') badges.push('Builder');
     if (walletData.classification === 'Degen') badges.push('Degen');
-
-    // Fetch leaderboard to calculate ranks
-    let builderRank = 0;
-    let degenRank = 0;
-    let totalWallets = 1;
-
-    try {
-      // Fetch from internal leaderboard API
-      const [builderRes, degenRes] = await Promise.all([
-        fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/leaderboard?type=builder&limit=1000`),
-        fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/api/leaderboard?type=degen&limit=1000`),
-      ]);
-
-      const [builderData, degenData] = await Promise.all([
-        builderRes.json(),
-        degenRes.json(),
-      ]);
-
-      if (builderData.success) {
-        totalWallets = Math.max(totalWallets, builderData.meta?.totalCount || builderData.data.length);
-        // Find rank based on builder score
-        const sortedBuilders = builderData.data.sort((a: { builderScore: number }, b: { builderScore: number }) => b.builderScore - a.builderScore);
-        const builderIndex = sortedBuilders.findIndex((w: { address: string }) => w.address.toLowerCase() === walletData.address);
-        if (builderIndex >= 0) {
-          builderRank = builderIndex + 1;
-        } else {
-          // Calculate estimated rank based on score
-          const higherScores = sortedBuilders.filter((w: { builderScore: number }) => w.builderScore > walletData.builderScore).length;
-          builderRank = higherScores + 1;
-        }
-      }
-
-      if (degenData.success) {
-        totalWallets = Math.max(totalWallets, degenData.meta?.totalCount || degenData.data.length);
-        // Find rank based on degen score
-        const sortedDegens = degenData.data.sort((a: { degenScore: number }, b: { degenScore: number }) => b.degenScore - a.degenScore);
-        const degenIndex = sortedDegens.findIndex((w: { address: string }) => w.address.toLowerCase() === walletData.address);
-        if (degenIndex >= 0) {
-          degenRank = degenIndex + 1;
-        } else {
-          // Calculate estimated rank based on score
-          const higherScores = sortedDegens.filter((w: { degenScore: number }) => w.degenScore > walletData.degenScore).length;
-          degenRank = higherScores + 1;
-        }
-      }
-    } catch (e) {
-      // If leaderboard fetch fails, show as new entry
-      console.log('Could not fetch leaderboard for ranking:', e);
-      builderRank = 1;
-      degenRank = 1;
-    }
+    if (walletData.totalVolumeUSD >= 100000) badges.push('Whale');
+    if (walletData.totalVolumeUSD >= 10000) badges.push('High Roller');
+    if (walletData.topDappInteractions >= 20) badges.push('dApp Power User');
 
     return NextResponse.json({
       success: true,
@@ -177,9 +129,6 @@ export async function GET(
         address: walletData.address,
         builderScore: walletData.builderScore,
         degenScore: walletData.degenScore,
-        builderRank,
-        degenRank,
-        totalWallets,
         builderPercentage,
         degenPercentage,
         personality,
@@ -189,6 +138,9 @@ export async function GET(
           totalTransactions: walletData.totalTransactions,
           contractsDeployed: walletData.contractsDeployed,
           tokenTransfers: walletData.tokenTransfers,
+          totalVolumeUSD: walletData.totalVolumeUSD,
+          topDapp: walletData.topDapp,
+          topDappInteractions: walletData.topDappInteractions,
         },
       },
     });

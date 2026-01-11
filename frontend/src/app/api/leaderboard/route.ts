@@ -1,82 +1,91 @@
-import { prisma } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+// Simple in-memory cache for recent wallet scores (resets on deploy)
+// For production, you could use Vercel KV or Redis
+const recentScores: Map<string, {
+  address: string;
+  builderScore: number;
+  degenScore: number;
+  timestamp: number;
+}> = new Map();
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const type = searchParams.get('type') || 'all'; // 'builder', 'degen', or 'all'
+    const type = searchParams.get('type') || 'all';
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
-    const offset = parseInt(searchParams.get('offset') || '0');
-    const timeFilter = searchParams.get('time') || 'all'; // 'day', 'week', or 'all'
 
-    let orderBy: { builderScore?: 'desc'; degenScore?: 'desc' } = {};
+    // Convert map to array and sort
+    const scores = Array.from(recentScores.values());
 
+    let sortedScores;
     if (type === 'builder') {
-      orderBy = { builderScore: 'desc' };
+      sortedScores = scores.sort((a, b) => b.builderScore - a.builderScore);
     } else if (type === 'degen') {
-      orderBy = { degenScore: 'desc' };
+      sortedScores = scores.sort((a, b) => b.degenScore - a.degenScore);
     } else {
-      // For 'all', we'll fetch both and let the frontend handle it
-      orderBy = { builderScore: 'desc' };
+      sortedScores = scores.sort((a, b) =>
+        (b.builderScore + b.degenScore) - (a.builderScore + a.degenScore)
+      );
     }
-
-    // Calculate time filter date
-    let dateFilter: Date | undefined;
-    const now = new Date();
-    if (timeFilter === 'day') {
-      dateFilter = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    } else if (timeFilter === 'week') {
-      dateFilter = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    }
-
-    const whereClause = dateFilter ? { lastUpdated: { gte: dateFilter } } : undefined;
-
-    // Get total count for pagination
-    const totalCount = await prisma.walletScore.count({
-      where: whereClause,
-    });
-
-    const scores = await prisma.walletScore.findMany({
-      take: limit,
-      skip: offset,
-      orderBy,
-      where: whereClause,
-      select: {
-        address: true,
-        builderScore: true,
-        degenScore: true,
-        lastUpdated: true,
-      },
-    });
-
-    // Get indexer state for status
-    const indexerState = await prisma.indexerState.findUnique({
-      where: { id: 'main' },
-    });
 
     return NextResponse.json({
       success: true,
-      data: scores,
+      data: sortedScores.slice(0, limit).map(s => ({
+        address: s.address,
+        builderScore: s.builderScore,
+        degenScore: s.degenScore,
+      })),
       meta: {
-        count: scores.length,
-        totalCount,
+        count: Math.min(sortedScores.length, limit),
+        totalCount: recentScores.size,
         type,
-        timeFilter,
-        offset,
-        limit,
-        lastBlockProcessed: indexerState?.lastBlockNumber?.toString() || '0',
-        lastUpdated: indexerState?.updatedAt?.toISOString() || null,
+        message: 'Leaderboard shows wallets that have checked their scores. Connect your wallet to appear!',
       },
     });
   } catch (error) {
     console.error('Leaderboard API error:', error);
     return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch leaderboard data',
-      },
+      { success: false, error: 'Failed to fetch leaderboard data' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST endpoint to add a wallet to the leaderboard
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { address, builderScore, degenScore } = body;
+
+    if (!address || typeof builderScore !== 'number' || typeof degenScore !== 'number') {
+      return NextResponse.json(
+        { success: false, error: 'Invalid data' },
+        { status: 400 }
+      );
+    }
+
+    recentScores.set(address.toLowerCase(), {
+      address: address.toLowerCase(),
+      builderScore,
+      degenScore,
+      timestamp: Date.now(),
+    });
+
+    // Keep only last 1000 entries
+    if (recentScores.size > 1000) {
+      const oldest = Array.from(recentScores.entries())
+        .sort((a, b) => a[1].timestamp - b[1].timestamp)[0];
+      recentScores.delete(oldest[0]);
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Leaderboard POST error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to update leaderboard' },
       { status: 500 }
     );
   }

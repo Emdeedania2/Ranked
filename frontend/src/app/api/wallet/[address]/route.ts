@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db';
+import { fetchWalletScore } from '@/lib/basescan';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -9,69 +9,69 @@ export async function GET(
 ) {
   try {
     const { address } = await params;
-    const normalizedAddress = address.toLowerCase();
 
-    const wallet = await prisma.walletScore.findUnique({
-      where: { address: normalizedAddress },
-    });
-
-    if (!wallet) {
-      return NextResponse.json({
-        success: true,
-        data: null,
-        message: 'Wallet not found in database',
-      });
+    // Validate address format
+    if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid wallet address' },
+        { status: 400 }
+      );
     }
 
-    // Calculate rank for builder and degen
-    const builderRank = await prisma.walletScore.count({
-      where: { builderScore: { gt: wallet.builderScore } },
-    });
-
-    const degenRank = await prisma.walletScore.count({
-      where: { degenScore: { gt: wallet.degenScore } },
-    });
-
-    const totalWallets = await prisma.walletScore.count();
+    // Fetch live data from Basescan
+    const walletData = await fetchWalletScore(address);
 
     // Calculate personality percentage
-    const totalScore = wallet.builderScore + wallet.degenScore;
-    const builderPercentage = totalScore > 0 ? Math.round((wallet.builderScore / totalScore) * 100) : 50;
+    const totalScore = walletData.builderScore + walletData.degenScore;
+    const builderPercentage = totalScore > 0
+      ? Math.round((walletData.builderScore / totalScore) * 100)
+      : 50;
     const degenPercentage = 100 - builderPercentage;
 
     // Determine personality type
     let personality: string;
-    if (builderPercentage >= 80) personality = 'Ultimate Builder';
-    else if (builderPercentage >= 60) personality = 'Builder-Leaning';
-    else if (degenPercentage >= 80) personality = 'Full Degen';
-    else if (degenPercentage >= 60) personality = 'Degen-Curious';
-    else personality = 'Perfectly Balanced';
+    if (walletData.classification === 'New') {
+      personality = 'New to Base';
+    } else if (builderPercentage >= 80) {
+      personality = 'Ultimate Builder';
+    } else if (builderPercentage >= 60) {
+      personality = 'Builder-Leaning';
+    } else if (degenPercentage >= 80) {
+      personality = 'Full Degen';
+    } else if (degenPercentage >= 60) {
+      personality = 'Degen-Curious';
+    } else {
+      personality = 'Perfectly Balanced';
+    }
 
     // Determine badges
     const badges: string[] = [];
-    if (builderRank < 10) badges.push('Top 10 Builder');
-    if (degenRank < 10) badges.push('Top 10 Degen');
-    if (builderRank === 0) badges.push('Builder King');
-    if (degenRank === 0) badges.push('Degen King');
+    if (walletData.contractsDeployed >= 10) badges.push('Master Builder');
+    if (walletData.contractsDeployed >= 5) badges.push('Contract Creator');
+    if (walletData.tokenTransfers >= 100) badges.push('Mega Degen');
+    if (walletData.tokenTransfers >= 50) badges.push('Active Trader');
+    if (walletData.totalTransactions >= 1000) badges.push('Power User');
+    if (walletData.totalTransactions >= 500) badges.push('Veteran');
     if (Math.abs(builderPercentage - 50) <= 10) badges.push('Balanced');
-    if (wallet.builderScore >= 100) badges.push('Master Builder');
-    if (wallet.degenScore >= 100) badges.push('Mega Degen');
-    if (totalScore >= 500) badges.push('Power User');
+    if (walletData.classification === 'Builder') badges.push('Builder');
+    if (walletData.classification === 'Degen') badges.push('Degen');
 
     return NextResponse.json({
       success: true,
       data: {
-        address: wallet.address,
-        builderScore: wallet.builderScore,
-        degenScore: wallet.degenScore,
-        builderRank: builderRank + 1,
-        degenRank: degenRank + 1,
-        totalWallets,
+        address: walletData.address,
+        builderScore: walletData.builderScore,
+        degenScore: walletData.degenScore,
         builderPercentage,
         degenPercentage,
         personality,
+        classification: walletData.classification,
         badges,
-        lastUpdated: wallet.lastUpdated,
+        stats: {
+          totalTransactions: walletData.totalTransactions,
+          contractsDeployed: walletData.contractsDeployed,
+          tokenTransfers: walletData.tokenTransfers,
+        },
       },
     });
   } catch (error) {
